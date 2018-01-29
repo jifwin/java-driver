@@ -26,6 +26,8 @@ import java.io.InvalidObjectException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.Objects;
 
 public class DefaultTupleValue implements TupleValue {
 
@@ -91,6 +93,44 @@ public class DefaultTupleValue implements TupleValue {
   private void readObject(ObjectInputStream stream) throws InvalidObjectException {
     // Should never be called since we serialized a proxy
     throw new InvalidObjectException("Proxy required");
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+
+    if (o == null || !(o instanceof TupleValue)) return false;
+    DefaultTupleValue that = (DefaultTupleValue) o;
+
+    if (this.protocolVersion() != that.protocolVersion()) return false;
+
+    for (int i = 0; i < values.length; i++) {
+      DataType innerThisType = type.getComponentTypes().get(i);
+      DataType innerThatType = type.getComponentTypes().get(i);
+      if (!innerThisType.equals(innerThatType)) {
+        return false;
+      }
+      Object thisValue =
+          this.codecRegistry()
+              .codecFor(innerThatType)
+              .decode(this.values[i], this.protocolVersion());
+      Object thatValue =
+          that.codecRegistry()
+              .codecFor(innerThatType)
+              .decode(that.values[i], that.protocolVersion());
+      if (!((thisValue == thatValue) || (thisValue != null && thisValue.equals(thatValue)))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @Override
+  public int hashCode() {
+
+    int result = Objects.hash(type);
+    result = 31 * result + Arrays.hashCode(values);
+    return result;
   }
 
   private static class SerializationProxy implements Serializable {

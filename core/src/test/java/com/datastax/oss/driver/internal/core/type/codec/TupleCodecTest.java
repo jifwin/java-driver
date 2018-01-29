@@ -120,6 +120,15 @@ public class TupleCodecTest extends CodecTestBase<TupleValue> {
   }
 
   @Test
+  public void should_evaluate_equality() {
+    TupleValue tuple1 = decode("0x" + ("00000004" + "00000001") + "ffffffff" + ("00000001" + "61"));
+    TupleValue tuple2 = decode("0x" + ("00000004" + "00000001") + "ffffffff" + ("00000001" + "61"));
+    TupleValue tuple3 = decode("0x" + ("00000004" + "00000001") + "ffffffff" + ("00000001" + "62"));
+    assertThat(tuple1).isEqualTo(tuple2);
+    assertThat(tuple1).isNotEqualTo(tuple3);
+  }
+
+  @Test
   public void should_format_null_tuple() {
     assertThat(format(null)).isEqualTo("NULL");
   }
