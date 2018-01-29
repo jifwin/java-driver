@@ -19,14 +19,13 @@ import com.datastax.oss.driver.api.core.CqlIdentifier;
 import com.datastax.oss.driver.api.core.config.DriverConfig;
 import com.datastax.oss.driver.api.core.config.DriverConfigProfile;
 import com.datastax.oss.driver.api.core.connection.ReconnectionPolicy;
-import com.datastax.oss.driver.api.core.metadata.Node;
 import com.datastax.oss.driver.internal.core.channel.ChannelFactory;
 import com.datastax.oss.driver.internal.core.channel.DriverChannel;
 import com.datastax.oss.driver.internal.core.context.EventBus;
 import com.datastax.oss.driver.internal.core.context.InternalDriverContext;
 import com.datastax.oss.driver.internal.core.context.NettyOptions;
 import com.datastax.oss.driver.internal.core.metadata.DefaultNode;
-import com.datastax.oss.driver.internal.core.metrics.MetricUpdaterFactory;
+import com.datastax.oss.driver.internal.core.metrics.NodeMetricUpdater;
 import com.google.common.util.concurrent.Uninterruptibles;
 import io.netty.channel.DefaultChannelPromise;
 import io.netty.channel.DefaultEventLoopGroup;
@@ -50,16 +49,16 @@ abstract class ChannelPoolTestBase {
 
   static final InetSocketAddress ADDRESS = new InetSocketAddress("localhost", 9042);
 
-  @Mock InternalDriverContext context;
+  @Mock protected InternalDriverContext context;
   @Mock private DriverConfig config;
-  @Mock DriverConfigProfile defaultProfile;
+  @Mock protected DriverConfigProfile defaultProfile;
   @Mock private ReconnectionPolicy reconnectionPolicy;
-  @Mock ReconnectionPolicy.ReconnectionSchedule reconnectionSchedule;
+  @Mock protected ReconnectionPolicy.ReconnectionSchedule reconnectionSchedule;
   @Mock private NettyOptions nettyOptions;
-  @Mock ChannelFactory channelFactory;
-  @Mock protected MetricUpdaterFactory metricUpdaterFactory;
-  Node node;
-  EventBus eventBus;
+  @Mock protected ChannelFactory channelFactory;
+  @Mock protected DefaultNode node;
+  @Mock protected NodeMetricUpdater nodeMetricUpdater;
+  protected EventBus eventBus;
   private DefaultEventLoopGroup adminEventLoopGroup;
 
   @Before
@@ -82,8 +81,8 @@ abstract class ChannelPoolTestBase {
     // it.
     Mockito.when(reconnectionSchedule.nextDelay()).thenReturn(Duration.ofDays(1));
 
-    Mockito.when(context.metricUpdaterFactory()).thenReturn(metricUpdaterFactory);
-    node = new DefaultNode(ADDRESS, context);
+    Mockito.when(node.getConnectAddress()).thenReturn(ADDRESS);
+    Mockito.when(node.getMetricUpdater()).thenReturn(nodeMetricUpdater);
   }
 
   @After

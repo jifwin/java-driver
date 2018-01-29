@@ -15,7 +15,6 @@
  */
 package com.datastax.oss.driver.internal.core.metrics;
 
-import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
 import com.datastax.oss.driver.api.core.config.CoreDriverOption;
 import com.datastax.oss.driver.api.core.config.DriverConfigProfile;
@@ -24,37 +23,29 @@ import com.datastax.oss.driver.api.core.metrics.SessionMetric;
 import com.datastax.oss.driver.internal.core.context.InternalDriverContext;
 import java.time.Duration;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class DefaultSessionMetricUpdater implements SessionMetricUpdater {
+public class DefaultSessionMetricUpdater extends MetricUpdaterBase<SessionMetric>
+    implements SessionMetricUpdater {
 
   private static final Logger LOG = LoggerFactory.getLogger(DefaultSessionMetricUpdater.class);
 
-  private final MetricRegistry metricRegistry;
   private final String metricNamePrefix;
-  private final Set<SessionMetric> enabledMetrics;
 
   public DefaultSessionMetricUpdater(
       Set<SessionMetric> enabledMetrics, InternalDriverContext context) {
-    this.enabledMetrics = enabledMetrics;
-    this.metricRegistry = context.metricRegistry();
+    super(enabledMetrics, context.metricRegistry());
     this.metricNamePrefix = context.sessionName() + ".";
 
-    String logPrefix = context.sessionName();
-    DriverConfigProfile config = context.config().getDefaultProfile();
-
     if (enabledMetrics.contains(CoreSessionMetric.cql_requests)) {
-      initializeCqlRequestsTimer(config, logPrefix);
+      initializeCqlRequestsTimer(context.config().getDefaultProfile(), context.sessionName());
     }
   }
 
   @Override
-  public void updateTimer(SessionMetric metric, long duration, TimeUnit unit) {
-    if (enabledMetrics.contains(metric)) {
-      metricRegistry.timer(metricNamePrefix + metric.name()).update(duration, unit);
-    }
+  protected String buildFullName(SessionMetric metric) {
+    return metricNamePrefix + metric.name();
   }
 
   private void initializeCqlRequestsTimer(DriverConfigProfile config, String logPrefix) {

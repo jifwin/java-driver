@@ -18,6 +18,7 @@ package com.datastax.oss.driver.internal.core.pool;
 import com.datastax.oss.driver.api.core.InvalidKeyspaceException;
 import com.datastax.oss.driver.api.core.config.CoreDriverOption;
 import com.datastax.oss.driver.api.core.loadbalancing.NodeDistance;
+import com.datastax.oss.driver.api.core.metrics.CoreNodeMetric;
 import com.datastax.oss.driver.internal.core.channel.ChannelEvent;
 import com.datastax.oss.driver.internal.core.channel.ClusterNameMismatchException;
 import com.datastax.oss.driver.internal.core.channel.DriverChannel;
@@ -82,6 +83,7 @@ public class ChannelPoolInitTest extends ChannelPoolTestBase {
 
     assertThat(poolFuture).isSuccess(pool -> assertThat(pool.channels).isEmpty());
     Mockito.verify(eventBus, never()).fire(ChannelEvent.channelOpened(node));
+    Mockito.verify(nodeMetricUpdater, times(3)).incrementCounter(CoreNodeMetric.connection_errors);
 
     factoryHelper.verifyNoMoreCalls();
   }
@@ -102,7 +104,13 @@ public class ChannelPoolInitTest extends ChannelPoolTestBase {
 
     factoryHelper.waitForCalls(ADDRESS, 3);
     waitForPendingAdminTasks();
-    assertThat(poolFuture).isSuccess(pool -> assertThat(pool.isInvalidKeyspace()).isTrue());
+    assertThat(poolFuture)
+        .isSuccess(
+            pool -> {
+              assertThat(pool.isInvalidKeyspace()).isTrue();
+              Mockito.verify(nodeMetricUpdater, times(3))
+                  .incrementCounter(CoreNodeMetric.connection_errors);
+            });
   }
 
   @Test
@@ -126,6 +134,7 @@ public class ChannelPoolInitTest extends ChannelPoolTestBase {
     Mockito.verify(eventBus).fire(TopologyEvent.forceDown(ADDRESS));
     Mockito.verify(eventBus, never()).fire(ChannelEvent.channelOpened(node));
 
+    Mockito.verify(nodeMetricUpdater, times(3)).incrementCounter(CoreNodeMetric.connection_errors);
     factoryHelper.verifyNoMoreCalls();
   }
 
@@ -172,6 +181,7 @@ public class ChannelPoolInitTest extends ChannelPoolTestBase {
 
     assertThat(pool.channels).containsOnly(channel1, channel2);
 
+    Mockito.verify(nodeMetricUpdater).incrementCounter(CoreNodeMetric.connection_errors);
     factoryHelper.verifyNoMoreCalls();
   }
 }

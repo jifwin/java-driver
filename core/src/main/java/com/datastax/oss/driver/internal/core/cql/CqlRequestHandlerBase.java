@@ -45,6 +45,7 @@ import com.datastax.oss.driver.internal.core.channel.DriverChannel;
 import com.datastax.oss.driver.internal.core.channel.ResponseCallback;
 import com.datastax.oss.driver.internal.core.context.InternalDriverContext;
 import com.datastax.oss.driver.internal.core.metadata.DefaultNode;
+import com.datastax.oss.driver.internal.core.metrics.NodeMetricUpdater;
 import com.datastax.oss.driver.internal.core.session.DefaultSession;
 import com.datastax.oss.driver.internal.core.session.RepreparePayload;
 import com.datastax.oss.driver.internal.core.util.Loggers;
@@ -305,6 +306,9 @@ public abstract class CqlRequestHandlerBase {
   private void setFinalError(Throwable error) {
     if (result.completeExceptionally(error)) {
       cancelScheduledTasks();
+      if (error instanceof DriverTimeoutException) {
+        session.getMetricUpdater().incrementCounter(CoreSessionMetric.cql_client_timeouts);
+      }
     }
   }
 
@@ -316,6 +320,7 @@ public abstract class CqlRequestHandlerBase {
   private class NodeResponseCallback
       implements ResponseCallback, GenericFutureListener<Future<java.lang.Void>> {
 
+    private final long start = System.nanoTime();
     private final Node node;
     private final DriverChannel channel;
     // The identifier of the current execution (0 for the initial execution, 1 for the first
@@ -357,6 +362,7 @@ public abstract class CqlRequestHandlerBase {
               channel,
               error);
           recordError(node, error);
+          ((DefaultNode) node).getMetricUpdater().incrementCounter(CoreNodeMetric.write_errors);
           sendRequest(null, execution, retryCount, scheduleNextExecution); // try next node
         }
       } else {
@@ -391,6 +397,9 @@ public abstract class CqlRequestHandlerBase {
                               nextExecution);
                           activeExecutionsCount.incrementAndGet();
                           startedSpeculativeExecutionsCount.incrementAndGet();
+                          ((DefaultNode) node)
+                              .getMetricUpdater()
+                              .incrementCounter(CoreNodeMetric.speculative_executions);
                           sendRequest(null, nextExecution, 0, true);
                         }
                       },
@@ -409,6 +418,10 @@ public abstract class CqlRequestHandlerBase {
 
     @Override
     public void onResponse(Frame responseFrame) {
+      ((DefaultNode) node)
+          .getMetricUpdater()
+          .updateTimer(
+              CoreNodeMetric.cql_messages, System.nanoTime() - start, TimeUnit.NANOSECONDS);
       inFlightCallbacks.remove(this);
       if (result.isDone()) {
         return;
@@ -497,6 +510,7 @@ public abstract class CqlRequestHandlerBase {
         return;
       }
       CoordinatorException error = Conversions.toThrowable(node, errorMessage);
+      NodeMetricUpdater metricUpdater = ((DefaultNode) node).getMetricUpdater();
       if (error instanceof BootstrappingException) {
         LOG.debug("[{}] {} is bootstrapping, trying next node", logPrefix, node);
         recordError(node, error);
@@ -505,6 +519,7 @@ public abstract class CqlRequestHandlerBase {
           || error instanceof FunctionFailureException
           || error instanceof ProtocolError) {
         LOG.debug("[{}] Unrecoverable error, rethrowing", logPrefix);
+        metricUpdater.incrementCounter(CoreNodeMetric.other_errors);
         setFinalError(error);
       } else {
         RetryDecision decision;
@@ -518,6 +533,12 @@ public abstract class CqlRequestHandlerBase {
                   readTimeout.getReceived(),
                   readTimeout.wasDataPresent(),
                   retryCount);
+          updateErrorMetrics(
+              metricUpdater,
+              decision,
+              CoreNodeMetric.read_timeouts,
+              CoreNodeMetric.retries_on_read_timeout,
+              CoreNodeMetric.ignores_on_read_timeout);
         } else if (error instanceof WriteTimeoutException) {
           WriteTimeoutException writeTimeout = (WriteTimeoutException) error;
           decision =
@@ -530,6 +551,12 @@ public abstract class CqlRequestHandlerBase {
                       writeTimeout.getReceived(),
                       retryCount)
                   : RetryDecision.RETHROW;
+          updateErrorMetrics(
+              metricUpdater,
+              decision,
+              CoreNodeMetric.write_timeouts,
+              CoreNodeMetric.retries_on_write_timeout,
+              CoreNodeMetric.ignores_on_write_timeout);
         } else if (error instanceof UnavailableException) {
           UnavailableException unavailable = (UnavailableException) error;
           decision =
@@ -539,11 +566,23 @@ public abstract class CqlRequestHandlerBase {
                   unavailable.getRequired(),
                   unavailable.getAlive(),
                   retryCount);
+          updateErrorMetrics(
+              metricUpdater,
+              decision,
+              CoreNodeMetric.unavailables,
+              CoreNodeMetric.retries_on_unavailable,
+              CoreNodeMetric.ignores_on_unavailable);
         } else {
           decision =
               isIdempotent
                   ? retryPolicy.onErrorResponse(statement, error, retryCount)
                   : RetryDecision.RETHROW;
+          updateErrorMetrics(
+              metricUpdater,
+              decision,
+              CoreNodeMetric.other_errors,
+              CoreNodeMetric.retries_on_other_error,
+              CoreNodeMetric.ignores_on_other_error);
         }
         processRetryDecision(decision, error);
       }
@@ -554,12 +593,10 @@ public abstract class CqlRequestHandlerBase {
       switch (decision) {
         case RETRY_SAME:
           recordError(node, error);
-          ((DefaultNode) node).getMetricUpdater().markMeter(CoreNodeMetric.retries);
           sendRequest(node, execution, retryCount + 1, false);
           break;
         case RETRY_NEXT:
           recordError(node, error);
-          ((DefaultNode) node).getMetricUpdater().markMeter(CoreNodeMetric.retries);
           sendRequest(null, execution, retryCount + 1, false);
           break;
         case RETHROW:
@@ -568,6 +605,28 @@ public abstract class CqlRequestHandlerBase {
         case IGNORE:
           setFinalResult(Void.INSTANCE, null, true, this);
           break;
+      }
+    }
+
+    private void updateErrorMetrics(
+        NodeMetricUpdater metricUpdater,
+        RetryDecision decision,
+        CoreNodeMetric error,
+        CoreNodeMetric retriesOnError,
+        CoreNodeMetric ignoresOnError) {
+      metricUpdater.incrementCounter(error);
+      switch (decision) {
+        case RETRY_SAME:
+        case RETRY_NEXT:
+          metricUpdater.incrementCounter(CoreNodeMetric.retries);
+          metricUpdater.incrementCounter(retriesOnError);
+          break;
+        case IGNORE:
+          metricUpdater.incrementCounter(CoreNodeMetric.ignores);
+          metricUpdater.incrementCounter(ignoresOnError);
+          break;
+        case RETHROW:
+          // nothing do do
       }
     }
 
@@ -585,6 +644,12 @@ public abstract class CqlRequestHandlerBase {
         decision = retryPolicy.onRequestAborted(statement, error, retryCount);
       }
       processRetryDecision(decision, error);
+      updateErrorMetrics(
+          ((DefaultNode) node).getMetricUpdater(),
+          decision,
+          CoreNodeMetric.aborted_requests,
+          CoreNodeMetric.retries_on_aborted,
+          CoreNodeMetric.ignores_on_aborted);
     }
 
     public void cancel() {

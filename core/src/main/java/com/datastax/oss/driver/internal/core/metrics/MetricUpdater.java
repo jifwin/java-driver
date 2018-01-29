@@ -15,6 +15,23 @@
  */
 package com.datastax.oss.driver.internal.core.metrics;
 
-import com.datastax.oss.driver.api.core.metrics.NodeMetric;
+import java.util.concurrent.TimeUnit;
 
-public interface NodeMetricUpdater extends MetricUpdater<NodeMetric> {}
+public interface MetricUpdater<MetricT> {
+
+  void incrementCounter(MetricT metric, long amount);
+
+  default void incrementCounter(MetricT metric) {
+    incrementCounter(metric, 1);
+  }
+
+  void updateHistogram(MetricT metric, long value);
+
+  void markMeter(MetricT metric, long amount);
+
+  default void markMeter(MetricT metric) {
+    markMeter(metric, 1);
+  }
+
+  void updateTimer(MetricT metric, long duration, TimeUnit unit);
+}

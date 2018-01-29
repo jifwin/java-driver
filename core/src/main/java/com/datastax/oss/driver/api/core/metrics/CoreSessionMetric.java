@@ -15,8 +15,10 @@
  */
 package com.datastax.oss.driver.api.core.metrics;
 
+import com.codahale.metrics.Counter;
 import com.codahale.metrics.Timer;
 import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.DriverTimeoutException;
 import com.datastax.oss.driver.api.core.cql.Statement;
 
 public enum CoreSessionMetric implements SessionMetric {
@@ -31,5 +33,11 @@ public enum CoreSessionMetric implements SessionMetric {
    * including any retry.
    */
   cql_requests,
+
+  /**
+   * The number of CQL requests that timed out &mdash; that is, the {@code session.execute()} call
+   * failed with a {@link DriverTimeoutException} (exposed as a {@link Counter}).
+   */
+  cql_client_timeouts,
   ;
 }

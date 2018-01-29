@@ -55,13 +55,13 @@ public class DefaultNode implements Node {
 
   public DefaultNode(InetSocketAddress connectAddress, InternalDriverContext context) {
     this.connectAddress = connectAddress;
-    // We leak a reference to a partially constructed object (this), but in practice this won't be a
-    // problem because the node updater only needs the connect address to initialize.
-    this.metricUpdater = context.metricUpdaterFactory().newNodeUpdater(this);
     this.state = NodeState.UNKNOWN;
     this.distance = NodeDistance.IGNORED;
     this.rawTokens = Collections.emptySet();
     this.extras = Collections.emptyMap();
+    // We leak a reference to a partially constructed object (this), but in practice this won't be a
+    // problem because the node updater only needs the connect address to initialize.
+    this.metricUpdater = context.metricUpdaterFactory().newNodeUpdater(this);
   }
 
   @Override

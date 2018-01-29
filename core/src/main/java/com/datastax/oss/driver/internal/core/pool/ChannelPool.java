@@ -24,6 +24,7 @@ import com.datastax.oss.driver.api.core.config.CoreDriverOption;
 import com.datastax.oss.driver.api.core.config.DriverConfig;
 import com.datastax.oss.driver.api.core.loadbalancing.NodeDistance;
 import com.datastax.oss.driver.api.core.metadata.Node;
+import com.datastax.oss.driver.api.core.metrics.CoreNodeMetric;
 import com.datastax.oss.driver.internal.core.channel.ChannelEvent;
 import com.datastax.oss.driver.internal.core.channel.ChannelFactory;
 import com.datastax.oss.driver.internal.core.channel.ClusterNameMismatchException;
@@ -32,6 +33,7 @@ import com.datastax.oss.driver.internal.core.channel.DriverChannelOptions;
 import com.datastax.oss.driver.internal.core.config.ConfigChangeEvent;
 import com.datastax.oss.driver.internal.core.context.EventBus;
 import com.datastax.oss.driver.internal.core.context.InternalDriverContext;
+import com.datastax.oss.driver.internal.core.metadata.DefaultNode;
 import com.datastax.oss.driver.internal.core.metadata.TopologyEvent;
 import com.datastax.oss.driver.internal.core.util.Loggers;
 import com.datastax.oss.driver.internal.core.util.concurrent.CompletableFutures;
@@ -279,6 +281,12 @@ public class ChannelPool implements AsyncAutoCloseable {
         assert future.isDone();
         if (future.isCompletedExceptionally()) {
           Throwable error = CompletableFutures.getFailed(future);
+          ((DefaultNode) node)
+              .getMetricUpdater()
+              .incrementCounter(
+                  error instanceof AuthenticationException
+                      ? CoreNodeMetric.authentication_errors
+                      : CoreNodeMetric.connection_errors);
           if (error instanceof ClusterNameMismatchException
               || error instanceof UnsupportedProtocolVersionException) {
             // This will likely be thrown by all channels, but finish the loop cleanly

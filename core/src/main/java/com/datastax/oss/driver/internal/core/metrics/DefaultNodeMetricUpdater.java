@@ -16,7 +16,9 @@
 package com.datastax.oss.driver.internal.core.metrics;
 
 import com.codahale.metrics.Gauge;
-import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Timer;
+import com.datastax.oss.driver.api.core.config.CoreDriverOption;
+import com.datastax.oss.driver.api.core.config.DriverConfigProfile;
 import com.datastax.oss.driver.api.core.metadata.Node;
 import com.datastax.oss.driver.api.core.metrics.CoreNodeMetric;
 import com.datastax.oss.driver.api.core.metrics.NodeMetric;
@@ -26,19 +28,25 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.time.Duration;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-public class DefaultNodeMetricUpdater implements NodeMetricUpdater {
+public class DefaultNodeMetricUpdater extends MetricUpdaterBase<NodeMetric>
+    implements NodeMetricUpdater {
+
+  private static final Logger LOG = LoggerFactory.getLogger(DefaultNodeMetricUpdater.class);
 
   private final String metricNamePrefix;
-  private final MetricRegistry metricRegistry;
-  private final Set<NodeMetric> enabledMetrics;
 
   public DefaultNodeMetricUpdater(
       Node node, Set<NodeMetric> enabledMetrics, InternalDriverContext context) {
+    super(enabledMetrics, context.metricRegistry());
     this.metricNamePrefix = buildPrefix(context.sessionName(), node.getConnectAddress());
-    this.enabledMetrics = enabledMetrics;
-    this.metricRegistry = context.metricRegistry();
+
+    String logPrefix = context.sessionName();
+    DriverConfigProfile config = context.config().getDefaultProfile();
 
     if (enabledMetrics.contains(CoreNodeMetric.pooled_connection_count)) {
       metricRegistry.register(
@@ -58,13 +66,14 @@ public class DefaultNodeMetricUpdater implements NodeMetricUpdater {
                 return (pool == null) ? 0 : pool.getAvailableIds();
               });
     }
+    if (enabledMetrics.contains(CoreNodeMetric.cql_messages)) {
+      initializeCqlMessagesTimer(config, logPrefix);
+    }
   }
 
   @Override
-  public void markMeter(NodeMetric metric) {
-    if (enabledMetrics.contains(metric)) {
-      metricRegistry.meter(metricNamePrefix + metric.name()).mark();
-    }
+  protected String buildFullName(NodeMetric metric) {
+    return metricNamePrefix + metric.name();
   }
 
   private String buildPrefix(String sessionName, InetSocketAddress addressAndPort) {
@@ -82,5 +91,36 @@ public class DefaultNodeMetricUpdater implements NodeMetricUpdater {
     }
     // Append the port in anticipation of when C* will support nodes on different ports
     return prefix.append('_').append(port).append('.').toString();
+  }
+
+  private void initializeCqlMessagesTimer(DriverConfigProfile config, String logPrefix) {
+    Duration highestLatency =
+        config.getDuration(CoreDriverOption.METRICS_NODE_CQL_MESSAGES_HIGHEST);
+    final int significantDigits;
+    int d = config.getInt(CoreDriverOption.METRICS_NODE_CQL_MESSAGES_DIGITS);
+    if (d >= 0 && d <= 5) {
+      significantDigits = d;
+    } else {
+      LOG.warn(
+          "[{}] Configuration option {} is out of range (expected between 0 and 5, found {}); "
+              + "using 3 instead.",
+          logPrefix,
+          CoreDriverOption.METRICS_NODE_CQL_MESSAGES_DIGITS,
+          d);
+      significantDigits = 3;
+    }
+    Duration refreshInterval =
+        config.getDuration(CoreDriverOption.METRICS_NODE_CQL_MESSAGES_INTERVAL);
+
+    // Initialize eagerly
+    metricRegistry.timer(
+        metricNamePrefix + CoreNodeMetric.cql_messages,
+        () ->
+            new Timer(
+                new HdrReservoir(
+                    highestLatency,
+                    significantDigits,
+                    refreshInterval,
+                    metricNamePrefix + "." + CoreNodeMetric.cql_messages)));
   }
 }

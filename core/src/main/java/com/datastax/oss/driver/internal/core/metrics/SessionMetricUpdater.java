@@ -16,8 +16,5 @@
 package com.datastax.oss.driver.internal.core.metrics;
 
 import com.datastax.oss.driver.api.core.metrics.SessionMetric;
-import java.util.concurrent.TimeUnit;
 
-public interface SessionMetricUpdater {
-  void updateTimer(SessionMetric name, long duration, TimeUnit unit);
-}
+public interface SessionMetricUpdater extends MetricUpdater<SessionMetric> {}
