@@ -28,6 +28,8 @@ import java.io.InvalidObjectException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.Objects;
 
 public class DefaultUdtValue implements UdtValue {
 
@@ -94,27 +96,37 @@ public class DefaultUdtValue implements UdtValue {
 
   @Override
   public boolean equals(Object o) {
-    if (!(o instanceof DefaultUdtValue)) return false;
+    if (this == o) return true;
+    if (o == null || !(o instanceof UdtValue)){
+      return false;
+    }
 
     DefaultUdtValue that = (DefaultUdtValue) o;
-    if (!type.equals(that.type)) return false;
+    if (!type.equals(that.type))
+      return false;
+    for(int i = 0; i < values.length; i++) {
+      DataType innerThisType=type.getFieldTypes().get(i);
+      DataType innerThatType=type.getFieldTypes().get(i);
+      if (!innerThisType.equals(innerThatType))
+        return false;
+      Object thisValue = this.codecRegistry().codecFor(innerThatType).decode(this.values[i], this.protocolVersion());
+      Object thatValue = that.codecRegistry().codecFor(innerThatType).decode(that.values[i], that.protocolVersion());
 
-    if (size() != that.size()) return false;
-    if (size() > 0) {
-      for (int i = 0; i < size(); i++) {
-        if (this.getBytesUnsafe(i) == null || that.getBytesUnsafe(i) == null) {
-          if (this.getBytesUnsafe(i) != that.getBytesUnsafe(i)) {
-            return false;
-          }
-        } else if (!getBytesUnsafe(i).equals(that.getBytesUnsafe(i))) return false;
+      if (!((thisValue == thatValue) || (thisValue != null && thisValue.equals(thatValue)))) {
+        return false;
       }
     }
     return true;
+
   }
+
 
   @Override
   public int hashCode() {
-    return super.hashCode();
+
+    int result = Objects.hash(type);
+    result = 31 * result + Arrays.hashCode(values);
+    return result;
   }
 
   @Override

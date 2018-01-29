@@ -129,7 +129,7 @@ public class UdtCodecTest extends CodecTestBase<UdtValue> {
   }
 
   @Test
-  public void should_evaluate_eqaulity() {
+  public void should_evaluate_equality() {
     UdtValue udt1 = decode("0x" + ("00000004" + "00000001") + "ffffffff" + ("00000001" + "61"));
     UdtValue udt2 = decode("0x" + ("00000004" + "00000001") + "ffffffff" + ("00000001" + "61"));
     UdtValue udt3 = decode("0x" + ("00000004" + "00000001") + "ffffffff" + ("00000001" + "60"));
