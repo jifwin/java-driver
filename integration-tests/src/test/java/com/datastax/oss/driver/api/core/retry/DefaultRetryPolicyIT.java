@@ -16,9 +16,9 @@
 package com.datastax.oss.driver.api.core.retry;
 
 import com.datastax.oss.driver.api.core.AllNodesFailedException;
-import com.datastax.oss.driver.api.core.ConsistencyLevel;
-import com.datastax.oss.driver.api.core.connection.ClosedConnectionException;
+import com.datastax.oss.driver.api.core.CoreConsistencyLevel;
 import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.connection.ClosedConnectionException;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.SimpleStatement;
 import com.datastax.oss.driver.api.core.metadata.Node;
@@ -113,7 +113,7 @@ public class DefaultRetryPolicyIT {
       fail("Expected a ReadTimeoutException");
     } catch (ReadTimeoutException rte) {
       // then a read timeout exception is thrown
-      assertThat(rte.getConsistencyLevel()).isEqualTo(ConsistencyLevel.LOCAL_QUORUM);
+      assertThat(rte.getConsistencyLevel()).isEqualTo(CoreConsistencyLevel.LOCAL_QUORUM);
       assertThat(rte.getReceived()).isEqualTo(1);
       assertThat(rte.getBlockFor()).isEqualTo(3);
       assertThat(rte.wasDataPresent()).isTrue();
@@ -125,7 +125,8 @@ public class DefaultRetryPolicyIT {
 
   @Test
   public void should_not_retry_on_read_timeout_when_less_than_blockFor_received() {
-    // given a node that will respond to a query with a read timeout where 2 out of 3 responses are received.
+    // given a node that will respond to a query with a read timeout where 2 out of 3 responses are
+    // received.
     // in this case, digest requests succeeded, but not the data request.
     simulacron.cluster().node(0).prime(when(queryStr).then(readTimeout(LOCAL_QUORUM, 2, 3, false)));
 
@@ -135,7 +136,7 @@ public class DefaultRetryPolicyIT {
       fail("Expected a ReadTimeoutException");
     } catch (ReadTimeoutException rte) {
       // then a read timeout exception is thrown
-      assertThat(rte.getConsistencyLevel()).isEqualTo(ConsistencyLevel.LOCAL_QUORUM);
+      assertThat(rte.getConsistencyLevel()).isEqualTo(CoreConsistencyLevel.LOCAL_QUORUM);
       assertThat(rte.getReceived()).isEqualTo(2);
       assertThat(rte.getBlockFor()).isEqualTo(3);
       assertThat(rte.wasDataPresent()).isFalse();
@@ -147,7 +148,8 @@ public class DefaultRetryPolicyIT {
 
   @Test
   public void should_retry_on_read_timeout_when_enough_responses_and_data_not_present() {
-    // given a node that will respond to a query with a read timeout where 3 out of 3 responses are received,
+    // given a node that will respond to a query with a read timeout where 3 out of 3 responses are
+    // received,
     // but data is not present.
     simulacron.cluster().node(0).prime(when(queryStr).then(readTimeout(LOCAL_QUORUM, 3, 3, false)));
 
@@ -157,7 +159,7 @@ public class DefaultRetryPolicyIT {
       fail("Expected a ReadTimeoutException");
     } catch (ReadTimeoutException rte) {
       // then a read timeout exception is thrown.
-      assertThat(rte.getConsistencyLevel()).isEqualTo(ConsistencyLevel.LOCAL_QUORUM);
+      assertThat(rte.getConsistencyLevel()).isEqualTo(CoreConsistencyLevel.LOCAL_QUORUM);
       assertThat(rte.getReceived()).isEqualTo(3);
       assertThat(rte.getBlockFor()).isEqualTo(3);
       assertThat(rte.wasDataPresent()).isFalse();
@@ -180,7 +182,8 @@ public class DefaultRetryPolicyIT {
 
     // when executing a query.
     ResultSet result = sessionRule.session().execute(query);
-    // then we should get a response, and the execution info on the result set indicates there was an error on
+    // then we should get a response, and the execution info on the result set indicates there was
+    // an error on
     // the host that received the query.
     assertThat(result.getExecutionInfo().getErrors()).hasSize(1);
     Map.Entry<Node, Throwable> error = result.getExecutionInfo().getErrors().get(0);
@@ -213,7 +216,8 @@ public class DefaultRetryPolicyIT {
       sessionRule.session().execute(query);
       fail("AllNodesFailedException expected");
     } catch (AllNodesFailedException ex) {
-      // then an AllNodesFailedException should be raised indicating that all nodes failed the request.
+      // then an AllNodesFailedException should be raised indicating that all nodes failed the
+      // request.
       assertThat(ex.getErrors()).hasSize(3);
     }
 
@@ -244,7 +248,8 @@ public class DefaultRetryPolicyIT {
           .execute(SimpleStatement.builder(queryStr).withIdempotence(false).build());
       fail("ClosedConnectionException expected");
     } catch (ClosedConnectionException ex) {
-      // then a ClosedConnectionException should be raised, indicating that the connection closed while handling
+      // then a ClosedConnectionException should be raised, indicating that the connection closed
+      // while handling
       // the request on that node.
       // this clearly indicates that the request wasn't retried.
       // Exception should indicate that node 0 was the failing node.
@@ -269,7 +274,7 @@ public class DefaultRetryPolicyIT {
       fail("WriteTimeoutException expected");
     } catch (WriteTimeoutException wte) {
       // then a write timeout exception is thrown
-      assertThat(wte.getConsistencyLevel()).isEqualTo(ConsistencyLevel.LOCAL_QUORUM);
+      assertThat(wte.getConsistencyLevel()).isEqualTo(CoreConsistencyLevel.LOCAL_QUORUM);
       assertThat(wte.getReceived()).isEqualTo(1);
       assertThat(wte.getBlockFor()).isEqualTo(3);
       assertThat(wte.getWriteType()).isEqualTo(WriteType.BATCH_LOG);
@@ -295,7 +300,8 @@ public class DefaultRetryPolicyIT {
   @Test
   public void should_not_retry_on_write_timeout_if_write_type_non_batch_log(
       com.datastax.oss.simulacron.common.codec.WriteType writeType) {
-    // given a node that will respond to query with a write timeout with write type that is not batch log.
+    // given a node that will respond to query with a write timeout with write type that is not
+    // batch log.
     simulacron
         .cluster()
         .node(0)
@@ -307,7 +313,7 @@ public class DefaultRetryPolicyIT {
       fail("WriteTimeoutException expected");
     } catch (WriteTimeoutException wte) {
       // then a write timeout exception is thrown
-      assertThat(wte.getConsistencyLevel()).isEqualTo(ConsistencyLevel.LOCAL_QUORUM);
+      assertThat(wte.getConsistencyLevel()).isEqualTo(CoreConsistencyLevel.LOCAL_QUORUM);
       assertThat(wte.getReceived()).isEqualTo(1);
       assertThat(wte.getBlockFor()).isEqualTo(3);
     }
@@ -332,7 +338,7 @@ public class DefaultRetryPolicyIT {
       fail("WriteTimeoutException expected");
     } catch (WriteTimeoutException wte) {
       // then a write timeout exception is thrown
-      assertThat(wte.getConsistencyLevel()).isEqualTo(ConsistencyLevel.LOCAL_QUORUM);
+      assertThat(wte.getConsistencyLevel()).isEqualTo(CoreConsistencyLevel.LOCAL_QUORUM);
       assertThat(wte.getReceived()).isEqualTo(1);
       assertThat(wte.getBlockFor()).isEqualTo(3);
       assertThat(wte.getWriteType()).isEqualTo(WriteType.BATCH_LOG);
@@ -349,7 +355,8 @@ public class DefaultRetryPolicyIT {
 
     // when executing a query.
     ResultSet result = sessionRule.session().execute(queryStr);
-    // then we should get a response, and the execution info on the result set indicates there was an error on
+    // then we should get a response, and the execution info on the result set indicates there was
+    // an error on
     // the host that received the query.
     assertThat(result.getExecutionInfo().getErrors()).hasSize(1);
     Map.Entry<Node, Throwable> error = result.getExecutionInfo().getErrors().get(0);
@@ -377,10 +384,11 @@ public class DefaultRetryPolicyIT {
       sessionRule.session().execute(queryStr);
       fail("Expected an UnavailableException");
     } catch (UnavailableException ue) {
-      // then we should get an unavailable exception with the host being node 1 (since it was second tried).
+      // then we should get an unavailable exception with the host being node 1 (since it was second
+      // tried).
       assertThat(ue.getCoordinator().getConnectAddress())
           .isEqualTo(simulacron.cluster().node(1).inetSocketAddress());
-      assertThat(ue.getConsistencyLevel()).isEqualTo(ConsistencyLevel.LOCAL_QUORUM);
+      assertThat(ue.getConsistencyLevel()).isEqualTo(CoreConsistencyLevel.LOCAL_QUORUM);
       assertThat(ue.getRequired()).isEqualTo(3);
       assertThat(ue.getAlive()).isEqualTo(0);
     }

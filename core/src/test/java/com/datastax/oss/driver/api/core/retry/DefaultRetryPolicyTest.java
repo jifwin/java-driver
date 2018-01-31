@@ -24,7 +24,7 @@ import com.datastax.oss.driver.api.core.servererrors.TruncateException;
 import com.datastax.oss.driver.api.core.servererrors.WriteFailureException;
 import org.junit.Test;
 
-import static com.datastax.oss.driver.api.core.ConsistencyLevel.QUORUM;
+import static com.datastax.oss.driver.api.core.CoreConsistencyLevel.QUORUM;
 import static com.datastax.oss.driver.api.core.retry.RetryDecision.RETHROW;
 import static com.datastax.oss.driver.api.core.retry.RetryDecision.RETRY_NEXT;
 import static com.datastax.oss.driver.api.core.retry.RetryDecision.RETRY_SAME;
