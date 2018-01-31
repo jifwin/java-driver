@@ -121,6 +121,6 @@ public class DefaultNodeMetricUpdater extends MetricUpdaterBase<NodeMetric>
                     highestLatency,
                     significantDigits,
                     refreshInterval,
-                    metricNamePrefix + "." + CoreNodeMetric.cql_messages)));
+                    metricNamePrefix + CoreNodeMetric.cql_messages)));
   }
 }
