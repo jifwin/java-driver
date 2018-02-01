@@ -19,6 +19,7 @@ import com.datastax.oss.driver.api.core.ProtocolVersion;
 import com.datastax.oss.driver.api.core.data.TupleValue;
 import com.datastax.oss.driver.api.core.type.DataType;
 import com.datastax.oss.driver.api.core.type.TupleType;
+import com.datastax.oss.driver.api.core.type.codec.TypeCodec;
 import com.datastax.oss.driver.api.core.type.codec.registry.CodecRegistry;
 import com.datastax.oss.protocol.internal.util.Bytes;
 import com.google.common.base.Preconditions;
@@ -28,11 +29,13 @@ import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DefaultTupleValue implements TupleValue {
 
   private static final long serialVersionUID = 1;
-
+  private static final Logger LOG = LoggerFactory.getLogger(DefaultTupleValue.class);
   private final TupleType type;
   private final ByteBuffer[] values;
 
@@ -97,28 +100,44 @@ public class DefaultTupleValue implements TupleValue {
 
   @Override
   public boolean equals(Object o) {
-    if (this == o) return true;
+    if (this == o) {
+      return true;
+    }
 
-    if (o == null || !(o instanceof TupleValue)) return false;
+    if (!(o instanceof TupleValue)) {
+      return false;
+    }
     DefaultTupleValue that = (DefaultTupleValue) o;
 
-    if (this.protocolVersion() != that.protocolVersion()) return false;
+    if (!this.protocolVersion().equals(that.protocolVersion())) {
+      return false;
+    }
 
     for (int i = 0; i < values.length; i++) {
       DataType innerThisType = type.getComponentTypes().get(i);
-      DataType innerThatType = type.getComponentTypes().get(i);
+      DataType innerThatType = that.type.getComponentTypes().get(i);
       if (!innerThisType.equals(innerThatType)) {
         return false;
       }
+      TypeCodec thatCodec = this.codecRegistry().codecFor(innerThatType);
+      TypeCodec thisCodec = that.codecRegistry().codecFor(innerThatType);
+      // If we can't find a needed codec, fallback on byte comparison
+      if (thatCodec == null || thisCodec == null) {
+        LOG.warn(
+            "No codec found for tuple type "
+                + innerThisType.toString()
+                + " falling back to byte comparison");
+        return Arrays.equals(values, that.values);
+      }
       Object thisValue =
           this.codecRegistry()
-              .codecFor(innerThatType)
+              .codecFor(innerThisType)
               .decode(this.values[i], this.protocolVersion());
       Object thatValue =
           that.codecRegistry()
               .codecFor(innerThatType)
               .decode(that.values[i], that.protocolVersion());
-      if (!((thisValue == thatValue) || (thisValue != null && thisValue.equals(thatValue)))) {
+      if (!Objects.equals(thisValue, thatValue)) {
         return false;
       }
     }
@@ -129,7 +148,25 @@ public class DefaultTupleValue implements TupleValue {
   public int hashCode() {
 
     int result = Objects.hash(type);
-    result = 31 * result + Arrays.hashCode(values);
+
+    for (int i = 0; i < values.length; i++) {
+      DataType innerThisType = type.getComponentTypes().get(i);
+      TypeCodec thisCodec = this.codecRegistry().codecFor(innerThisType);
+      if (thisCodec == null) {
+        LOG.warn(
+            "No codec found for tuple type "
+                + innerThisType.toString()
+                + " falling bytes for hashcode");
+        // For consistency sake if we can't deserialize one of the tuple values, just use the array+type
+        return 31 * Objects.hash(type) + Arrays.hashCode(values);
+      }
+      Object thisValue =
+          this.codecRegistry()
+              .codecFor(innerThisType)
+              .decode(this.values[i], this.protocolVersion());
+      result = 31 * result + thisValue.hashCode();
+    }
+
     return result;
   }
 
