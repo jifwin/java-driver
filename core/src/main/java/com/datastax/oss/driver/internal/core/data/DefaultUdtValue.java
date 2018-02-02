@@ -30,9 +30,11 @@ import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DefaultUdtValue implements UdtValue {
-
+  private static final Logger LOG = LoggerFactory.getLogger(DefaultUdtValue.class);
   private static final long serialVersionUID = 1;
 
   private final UserDefinedType type;
@@ -97,43 +99,80 @@ public class DefaultUdtValue implements UdtValue {
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
-    if (o == null || !(o instanceof UdtValue)){
+    if (o == null || !(o instanceof UdtValue)) {
       return false;
     }
 
     DefaultUdtValue that = (DefaultUdtValue) o;
-    if (!type.equals(that.type))
-      return false;
-    for(int i = 0; i < values.length; i++) {
-      DataType innerThisType=type.getFieldTypes().get(i);
-      DataType innerThatType=type.getFieldTypes().get(i);
-      if (!innerThisType.equals(innerThatType))
-        return false;
-      Object thisValue = this.codecRegistry().codecFor(innerThatType).decode(this.values[i], this.protocolVersion());
-      Object thatValue = that.codecRegistry().codecFor(innerThatType).decode(that.values[i], that.protocolVersion());
+    if (!type.equals(that.type)) return false;
+    for (int i = 0; i < values.length; i++) {
 
-      if (!((thisValue == thatValue) || (thisValue != null && thisValue.equals(thatValue)))) {
+      DataType innerThisType = type.getFieldTypes().get(i);
+      DataType innerThatType = that.type.getFieldTypes().get(i);
+
+      if (!innerThisType.equals(innerThatType)) {
+        return false;
+      }
+      TypeCodec thatCodec = this.codecRegistry().codecFor(innerThatType);
+      TypeCodec thisCodec = that.codecRegistry().codecFor(innerThatType);
+      if (thatCodec == null || thisCodec == null) {
+        LOG.warn(
+            "No codec found for user defined type "
+                + innerThisType.toString()
+                + " falling back to byte comparison");
+        return Arrays.equals(values, that.values);
+      }
+      Object thisValue = thisCodec.decode(this.values[i], this.protocolVersion());
+      Object thatValue = thatCodec.decode(that.values[i], that.protocolVersion());
+
+      if (!Objects.equals(thisValue, thatValue)) {
         return false;
       }
     }
     return true;
-
   }
-
 
   @Override
   public int hashCode() {
-
     int result = Objects.hash(type);
-    result = 31 * result + Arrays.hashCode(values);
+    for (int i = 0; i < values.length; i++) {
+      DataType innerThisType = type.getFieldTypes().get(i);
+      TypeCodec codec = this.codecRegistry().codecFor(innerThisType);
+      if (codec == null) {
+        LOG.warn(
+            "No codec found for tuple type "
+                + innerThisType.toString()
+                + " falling bytes for hashcode");
+        // For consistency sake if we can't deserialize one of the tuple values, just use the array+type
+        return 31 * Objects.hash(type) + Arrays.hashCode(values);
+      }
+      Object thisValue = codec.decode(this.values[i], this.protocolVersion());
+      result = 31 * result + thisValue.hashCode();
+    }
     return result;
   }
 
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    TypeCodec<Object> codec = this.codecRegistry().codecFor(type);
-    sb.append(codec.format(this));
+    sb.append("(");
+    for (int i = 0; i < values.length; i++) {
+      if (i != 0) {
+        sb.append(",");
+      }
+      DataType thisType = type.getFieldTypes().get(i);
+      TypeCodec<Object> codec = this.codecRegistry().codecFor(thisType);
+      if (codec == null) {
+        sb.append(Arrays.toString(values));
+      }
+      Object thisValue = codec.decode(this.values[i], this.protocolVersion());
+      if (thisValue != null) {
+        sb.append(thisValue.toString());
+      } else {
+        sb.append("NULL");
+      }
+    }
+    sb.append(")");
     return sb.toString();
   }
 
